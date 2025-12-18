@@ -15,6 +15,8 @@ type TestTask struct {
 }
 
 func TestFetcher(t *testing.T) {
+	t.Parallel()
+
 	// Create a new background context for the operation.
 	// This context is typically used when no cancellation, timeout, or specific context values are needed.
 	ctx := context.Background()
@@ -76,7 +78,7 @@ func TestFetcher(t *testing.T) {
 			// If this operation fails, the test will fail due to the lack of task serialization.
 			taskJSON, _ := transcoder.Encode(task)
 			// Push the marshaled task into the Redis list at the given testKey.
-			// The RPush operation appends the task to the list in Redis, simulating task storage in the cache.
+			// The RPush operation appends the task to the list in Redis, simulating task storage in the storage.
 			// If this operation fails, it indicates that the task was not successfully added to Redis.
 			err = rdb.RPush(ctx, testKey, taskJSON).Err()
 			// Assert that no error occurred during the RPush operation.
@@ -86,7 +88,7 @@ func TestFetcher(t *testing.T) {
 		}
 
 		// Call the Fetch function to retrieve tasks from Redis using the defined key.
-		// This simulates fetching tasks from Redis, where the `Fetch` method should return
+		// This simulates fetching tasks from Redis, where the Fetch method should return
 		// the tasks that were previously pushed to the Redis list.
 		fetchedTasks, fetchErr := fetcher.Fetch(ctx, []string{testKey})
 		// Assert that no error occurred while fetching tasks.
@@ -116,5 +118,41 @@ func TestFetcher(t *testing.T) {
 		// This ensures that the fetcher correctly handles the scenario where there are no tasks in the Redis list.
 		// The length of the fetched tasks slice should be zero.
 		assert.Len(t, fetchedEmptyTasks, 0, "Empty task list")
+	})
+
+	// FailedDecodeValue verifies the behavior of the Fetch method when a stored task cannot be decoded.
+	// This test ensures that the fetcher gracefully handles malformed or invalid task data returned from Redis.
+	// It validates that decoding failures do not cause the fetch operation itself to fail and that invalid
+	// entries are safely ignored, preventing corrupted data from being propagated to the caller.
+	t.Run("FailedDecodeValue", func(t *testing.T) {
+		// Define a malformed JSON payload that will fail during decoding.
+		// This value simulates a corrupted or partially written task entry stored in Redis.
+		// The missing delimiter ensures that the transcoder will return a decoding error.
+		task := `{"name": "error_data", "value" 456`
+
+		// Define the Redis key where the test tasks will be stored.
+		// This key is used as an identifier to store and later retrieve tasks from Redis.
+		testKey := "fetcher.domain.com::test_failed_decode"
+
+		// Push the marshaled task into the Redis list at the given testKey.
+		// The RPush operation appends the task to the list in Redis, simulating task storage in the storage.
+		// If this operation fails, it indicates that the task was not successfully added to Redis.
+		err = rdb.RPush(ctx, testKey, task).Err()
+		// Assert that no error occurred during the RPush operation.
+		// This verifies that the task was successfully pushed to Redis.
+		// If an error is encountered, it suggests an issue with interacting with Redis.
+		assert.NoError(t, err, "Failed to push task into Redis")
+
+		// Fetch tasks from Redis using the defined testKey.
+		// The fetcher is expected to encounter a decoding error for the stored task.
+		// The operation itself should succeed while silently skipping the invalid entry.
+		fetchedTasks, fetchErr := fetcher.Fetch(ctx, []string{testKey})
+		// Assert that no error was returned by the fetch operation.
+		// This verifies that decoding failures are handled internally and do not cause the fetch to fail.
+		assert.NoError(t, fetchErr, "Failed to fetch tasks when decode error occurs")
+		// Assert that the fetched tasks slice is empty.
+		// This ensures that the fetcher correctly handles the scenario where there are no tasks in the Redis list.
+		// The length of the fetched tasks slice should be zero.
+		assert.Len(t, fetchedTasks, 0, "Empty task list")
 	})
 }
