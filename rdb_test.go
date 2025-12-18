@@ -253,11 +253,9 @@ func TestFetcherWithCloseRedisConnection(t *testing.T) {
 	// which would mean the setup is incomplete or incorrect.
 	assert.NotNil(t, rdb, "Expected the Redis client to be initialized, but got nil")
 
-	transcoder := &defaultTranscoder[TestTask]{}
-
 	// Create a new fetcher instance for the TestTask type using the provided Redis client.
 	// This ensures that the fetcher is initialized with the necessary dependencies for performing operations.
-	fetcher, err := NewRedisFetcher[TestTask](WithClient[TestTask](rdb), WithTranscoder[TestTask](transcoder))
+	fetcher, err := NewRedisFetcher[TestTask](WithClient[TestTask](rdb))
 	// Assert that no error occurred during fetcher creation.
 	// This confirms that all required dependencies were provided and that the fetcher was initialized successfully.
 	assert.NoError(t, err, "Failed to create redis fetcher")
@@ -265,6 +263,14 @@ func TestFetcherWithCloseRedisConnection(t *testing.T) {
 	// This verifies that the New function has properly initialized the fetcher,
 	// ensuring that it is ready to perform its intended operations.
 	assert.NotNil(t, fetcher, "Expected fetcher instance to be initialized and not nil")
+	// Assert that the fetcher's transcoder is not nil.
+	// This verifies that the constructor assigned a transcoder, either the provided one or the default,
+	// ensuring that task decoding operations can be performed safely.
+	assert.NotNil(t, fetcher.transcoder, "Expected fetcher transcoder to be initialized and not nil")
+	// Assert that the fetcher's transcoder is the default transcoder instance.
+	// This confirms that when no custom transcoder is provided, the fetcher uses the built-in default transcoder.
+	// Using the default ensures that tasks can be decoded correctly without requiring additional configuration.
+	assert.Equal(t, &defaultTranscoder[TestTask]{}, fetcher.transcoder, "Expected fetcher to use the default transcoder")
 
 	// FailedFetch verifies the behavior of the `Fetch` method when Redis is unavailable.
 	// This test ensures that when the Redis connection is closed before calling Fetch,
