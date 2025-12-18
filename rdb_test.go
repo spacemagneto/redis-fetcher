@@ -51,7 +51,9 @@ func TestFetcher(t *testing.T) {
 	// Create a new fetcher instance for the TestTask type using the provided Redis client.
 	// This ensures that the fetcher is initialized with the necessary dependencies for performing operations.
 	fetcher, err := NewRedisFetcher[TestTask](WithClient[TestTask](rdb), WithTranscoder[TestTask](transcoder))
-	assert.NoError(t, err)
+	// Assert that no error occurred during fetcher creation.
+	// This confirms that all required dependencies were provided and that the fetcher was initialized successfully.
+	assert.NoError(t, err, "Failed to create redis fetcher")
 	// Assert that the fetcher instance is successfully created and not nil.
 	// This verifies that the New function has properly initialized the fetcher,
 	// ensuring that it is ready to perform its intended operations.
@@ -154,5 +156,76 @@ func TestFetcher(t *testing.T) {
 		// This ensures that the fetcher correctly handles the scenario where there are no tasks in the Redis list.
 		// The length of the fetched tasks slice should be zero.
 		assert.Len(t, fetchedTasks, 0, "Empty task list")
+	})
+}
+
+func TestFetcherWithCloseRedisConnection(t *testing.T) {
+	// Create a new background context for the operation.
+	// This context is typically used when no cancellation, timeout, or specific context values are needed.
+	ctx := context.Background()
+
+	redisAddress := os.Getenv("REDIS_ADDRESS")
+
+	// Retrieve the Redis cluster client from the container.
+	// NewUniversalClient() is a method that obtains an instance of the Redis client
+	// which is used to interact with the Redis cluster in the test environment. This client is necessary
+	// for performing operations like setting and retrieving data in Redis.
+	rdb := redis.NewUniversalClient(&redis.UniversalOptions{Addrs: []string{redisAddress}})
+	// Ensure that the Redis cluster client is closed when the test function completes.
+	// defer ensures that closeFn() is called at the end of the test function,
+	// releasing any resources associated with the Redis client. This is important to avoid resource leaks
+	// and to properly clean up the Redis client after the test has finished.
+	defer rdb.Close()
+
+	// Perform a health check by pinging the Redis server using the provided context.
+	// This ensures that the connection to the Redis server is active and functional.
+	err := rdb.Ping(ctx).Err()
+	// Assert that no error occurred during the ping operation.
+	// If an error is returned, it indicates an issue with the Redis connection.
+	assert.NoError(t, err, "Expected Redis server to respond to ping without errors")
+	// Assert that the Redis client is not nil.
+	// This check ensures that the Redis client has been properly initialized and is ready to be used.
+	// If `rdb` is nil, it indicates that the Redis client could not be retrieved from the container,
+	// which would mean the setup is incomplete or incorrect.
+	assert.NotNil(t, rdb, "Expected the Redis client to be initialized, but got nil")
+
+	transcoder := &defaultTranscoder[TestTask]{}
+
+	// Create a new fetcher instance for the TestTask type using the provided Redis client.
+	// This ensures that the fetcher is initialized with the necessary dependencies for performing operations.
+	fetcher, err := NewRedisFetcher[TestTask](WithClient[TestTask](rdb), WithTranscoder[TestTask](transcoder))
+	// Assert that no error occurred during fetcher creation.
+	// This confirms that all required dependencies were provided and that the fetcher was initialized successfully.
+	assert.NoError(t, err, "Failed to create redis fetcher")
+	// Assert that the fetcher instance is successfully created and not nil.
+	// This verifies that the New function has properly initialized the fetcher,
+	// ensuring that it is ready to perform its intended operations.
+	assert.NotNil(t, fetcher, "Expected fetcher instance to be initialized and not nil")
+
+	// FailedFetch verifies the behavior of the `Fetch` method when Redis is unavailable.
+	// This test ensures that when the Redis connection is closed before calling Fetch,
+	// the method correctly returns an error. The goal is to validate that Fetch handles
+	// connection failures gracefully and does not return unexpected results.
+	t.Run("FailedFetch", func(t *testing.T) {
+		// Close the Redis client connection before attempting to fetch data.
+		// This simulates a failure scenario where the Redis client is unavailable,
+		// ensuring that Fetch correctly handles errors when Redis is not reachable.
+		closeErr := rdb.Close()
+		// Verify that closing the Redis client did not produce an unexpected error.
+		// Ensuring that the connection closes cleanly prevents false negatives in this test.
+		assert.NoError(t, closeErr, "Failed to close Redis connection")
+
+		// Define the Redis key where the test tasks will be stored.
+		// This key is used as an identifier to store and later retrieve tasks from Redis.
+		testKey := "fetcher.domain.com::failed"
+
+		// Attempt to fetch data from Redis using the Fetch method.
+		// Since the Redis client is closed, this operation should fail,
+		// triggering an error response.
+		_, fetchErr := fetcher.Fetch(ctx, []string{testKey})
+		// Verify that an error is returned as expected.
+		// This ensures that Fetch correctly reports failures when Redis is unavailable,
+		// validating its ability to handle connection-related issues.
+		assert.Error(t, fetchErr, "Expected error when fetching with closed Redis connection, but got nil")
 	})
 }
