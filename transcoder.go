@@ -4,15 +4,11 @@ import (
 	"github.com/goccy/go-json"
 )
 
-// Transcoder defines the contract for bidirectional conversion between a value of type T
-// and its string representation. Users may implement custom transcoders (e.g. protobuf,
-// msgpack, custom compression, etc.) to control exactly how data is serialized and stored.
-// The interface is intentionally minimal and string-based because Redis stores values as strings.
+// Transcoder defines the interface for encoding and decoding values of type T.
+// It provides a mechanism to serialize values to a string and reconstruct them back.
+// This is essential for storing structured data in Redis as strings and retrieving it safely.
+// Implementations must ensure that Decode perfectly reverses the Encode operation for the same instance.
 type Transcoder[T any] interface {
-	// Encode converts a value of type T into a string suitable for storage in Redis.
-	// The implementation fully controls the format, encoding, and optional compression.
-	Encode(T) (string, error)
-
 	// Decode reconstructs a value of type T from the string previously produced by Encode.
 	// It must perfectly reverse the Encode operation for the same transcoder instance.
 	Decode(string) (T, error)
