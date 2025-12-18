@@ -39,7 +39,7 @@ func TestDefaultTranscoder(t *testing.T) {
 			result, err := transcoder.Encode(tt.input)
 
 			assert.NoError(t, err, "Marshal must never return an error for valid Go values")
-			assert.JSONEq(t, tt.expected, string(result), "Marshaled JSON does not match expected for input %+v", tt.input)
+			assert.JSONEq(t, tt.expected, result, "Marshaled JSON does not match expected for input %+v", tt.input)
 		})
 	}
 }
