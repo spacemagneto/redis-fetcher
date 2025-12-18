@@ -50,7 +50,7 @@ func TestFetcher(t *testing.T) {
 
 	// Create a new fetcher instance for the TestTask type using the provided Redis client.
 	// This ensures that the fetcher is initialized with the necessary dependencies for performing operations.
-	fetcher, err := NewRedisFetcher[TestTask](WithClient[TestTask](rdb), WithTranscoder[TestTask](transcoder))
+	fetcher, err := NewRedisFetcher[TestTask](WithClient[TestTask](rdb), WithTranscoder[TestTask](transcoder), WithTaskSize[TestTask](-1))
 	// Assert that no error occurred during fetcher creation.
 	// This confirms that all required dependencies were provided and that the fetcher was initialized successfully.
 	assert.NoError(t, err, "Failed to create redis fetcher")
@@ -58,6 +58,14 @@ func TestFetcher(t *testing.T) {
 	// This verifies that the New function has properly initialized the fetcher,
 	// ensuring that it is ready to perform its intended operations.
 	assert.NotNil(t, fetcher, "Expected fetcher instance to be initialized and not nil")
+	// Assert that the fetcher task size is correctly set to the default value.
+	// This verifies that the New function applies the default task size
+	// when the provided size is less than or equal to zero during initialization.
+	assert.Equal(t, defaultTaskSize, fetcher.size, "Expected fetcher task size to be set to the default value")
+	// Assert that the default Lua extract command is correctly applied.
+	// This ensures that the fetcher uses the built-in script when no custom script is provided,
+	// guaranteeing consistent task extraction behavior.
+	assert.Equal(t, defaultExtractCommand, fetcher.extractCommand, "Expected fetcher to use the default extract command")
 
 	// SuccessFetch verifies the behavior of the `Fetch` method when retrieving tasks from Redis.
 	// This test ensures that the method correctly fetches tasks, processes them as expected, and
@@ -228,4 +236,9 @@ func TestFetcherWithCloseRedisConnection(t *testing.T) {
 		// validating its ability to handle connection-related issues.
 		assert.Error(t, fetchErr, "Expected error when fetching with closed Redis connection, but got nil")
 	})
+}
+
+func TestFetcherOptions(t *testing.T) {
+	t.Parallel()
+
 }
