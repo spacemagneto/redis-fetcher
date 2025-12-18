@@ -9,6 +9,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// https://github.com/redis/go-redis/blob/master/example/lua-scripting/main.go#L35
+var testScript = redis.NewScript(`
+local key = KEYS[1]
+local change = ARGV[1]
+
+local value = redis.call("GET", key)
+if not value then
+  value = 0
+end
+
+value = value + change
+redis.call("SET", key, value)
+
+return value
+`)
+
 type TestTask struct {
 	ID   int    `json:"id"`
 	Data string `json:"data"`
@@ -46,6 +62,8 @@ func TestFetcher(t *testing.T) {
 	// which would mean the setup is incomplete or incorrect.
 	assert.NotNil(t, rdb, "Expected the Redis client to be initialized, but got nil")
 
+	// Initialize the default transcoder for the TestTask type.
+	// The transcoder is used to decode task data retrieved from Redis.
 	transcoder := &defaultTranscoder[TestTask]{}
 
 	// Create a new fetcher instance for the TestTask type using the provided Redis client.
@@ -165,6 +183,44 @@ func TestFetcher(t *testing.T) {
 		// The length of the fetched tasks slice should be zero.
 		assert.Len(t, fetchedTasks, 0, "Empty task list")
 	})
+
+	// InitFetcherWithoutRedis verifies the behavior of the NewRedisFetcher constructor
+	// when no valid Redis client is provided. This test ensures that the constructor
+	// correctly returns an error, preventing the creation of a fetcher without a required dependency.
+	t.Run("InitFetcherWithoutRedis", func(t *testing.T) {
+		// Attempt to create a new fetcher instance with a nil Redis client.
+		// The constructor should detect the missing client and fail initialization.
+		_, fetcherErr := NewRedisFetcher(WithClient[any](nil))
+
+		// Assert that an error was returned by the constructor.
+		// This confirms that the fetcher cannot be created without a valid Redis client.
+		assert.Error(t, fetcherErr, "Expected error when initializing fetcher without Redis client")
+
+		// Assert that the returned error matches ErrEmptyRedisClient.
+		// This ensures that the correct, predefined error is returned for a missing Redis client.
+		assert.ErrorIs(t, fetcherErr, ErrEmptyRedisClient, "Expected ErrEmptyRedisClient when Redis client is nil")
+	})
+
+	// InitFetcherWithScript verifies that the NewRedisFetcher constructor correctly applies a custom Lua script.
+	// This test ensures that when a specific script is provided, the fetcher uses it instead of the default script.
+	// It also checks that the provided transcoder is correctly assigned to the fetcher instance.
+	t.Run("InitFetcherWithScript", func(t *testing.T) {
+		// Initialize the default transcoder for the TestTask type.
+		// The transcoder is used to decode task data retrieved from Redis.
+		tr := &defaultTranscoder[TestTask]{}
+		// Create a new fetcher instance with a custom Lua script and the provided transcoder.
+		// The fetcher should use the provided script and transcoder instead of defaults.
+		fetch, fetcherErr := NewRedisFetcher[TestTask](WithClient[TestTask](rdb), WithScript[TestTask](testScript), WithTranscoder[TestTask](tr))
+		// Assert that no error occurred during fetcher creation.
+		// This confirms that the constructor successfully accepted the provided options.
+		assert.NoError(t, fetcherErr, "Expected fetcher to be created without errors")
+		// Assert that the fetcher's extract command matches the provided custom script.
+		// This ensures that the constructor correctly applied the specified Lua script.
+		assert.Equal(t, testScript, fetch.extractCommand, "Expected fetcher to use the provided custom script")
+		// Assert that the fetcher's transcoder matches the provided transcoder.
+		// This verifies that the constructor correctly assigned the custom transcoder.
+		assert.Equal(t, transcoder, fetch.transcoder, "Expected fetcher to use the provided transcoder")
+	})
 }
 
 func TestFetcherWithCloseRedisConnection(t *testing.T) {
@@ -236,9 +292,4 @@ func TestFetcherWithCloseRedisConnection(t *testing.T) {
 		// validating its ability to handle connection-related issues.
 		assert.Error(t, fetchErr, "Expected error when fetching with closed Redis connection, but got nil")
 	})
-}
-
-func TestFetcherOptions(t *testing.T) {
-	t.Parallel()
-
 }
