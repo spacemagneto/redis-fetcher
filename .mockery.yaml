@@ -1,0 +1,9 @@
+packages:
+  github.com/spacemagneto/redis-fetcher:
+    config:
+      dir: "{{.InterfaceDir}}"
+      filename: "mocks/mocks.go"
+      structname: "{{.InterfaceName}}"
+    interfaces:
+      Fetcher:
+        config:
