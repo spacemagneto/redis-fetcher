@@ -103,7 +103,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/spacemagneto/go-redis-cache
+        - github.com/spacemagneto/redis-fetcher
   exclusions:
     generated: lax
     paths:
